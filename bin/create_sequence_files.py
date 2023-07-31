@@ -1,5 +1,11 @@
 #!/usr/bin/env python
-# written by Philipp Resl
+# First written by Philipp Resl
+# big revision by Rodger Wang in July 2023 to  
+# - adapt to new Busco version (works with BUSCO 5.3.2);
+# - fixed a bug by in Philipp's code which may cause duplicated sequences when feeding data to iq-tree later
+# - vastly improve speed in the order of hundred times by untarring tar file in advance
+# - Add a new way to eliminate the need of tar file
+# - Add a new option to specify the location of squence files location under busco result directory
 
 import os
 import sys
@@ -9,24 +15,25 @@ import argparse
 import tarfile
 from io import StringIO
 from io import TextIOWrapper
-import glob
+import shutil
 
 if sys.version_info[0] < 3:
-    raise Exception("Must be using Python 3")
+	raise Exception("Must be using Python 3")
 
-pars = argparse.ArgumentParser(prog="create_sequence_files.py", description = """This script will create fasta files for all the buscos from all species with >% of buscos present""", epilog = """written by Philipp Resl""")
+pars = argparse.ArgumentParser(prog="create_sequence_files.py", description = """This script will create fasta files for all the buscos from all species with >% of buscos present""", epilog = """First written by Philipp Resl, then revised by Rodger Wang""")
 pars.add_argument('--busco_table', dest="busco_table", required=True, help="Path to BUSCO table.")
-pars.add_argument('--busco_results', dest="busco_results", required=True, help="Results directory containing all BUSCO runs.")
+pars.add_argument('--busco_results', dest="busco_results", required=True, help="Results directory containing all BUSCO genomes.")
 pars.add_argument('--cutoff', dest="cutoff", default=0, required=True, help="Percent cutoff %% for BUSCO presence. Species below this threshold will be excluded.")
 pars.add_argument('--outdir', dest="outdir", required=True, help="Path to output directory.")
 pars.add_argument('--minsp', dest="minsp", required=True, help="Minimum number of species which have to be present to keep the sequences.")
 pars.add_argument('--type' , dest="type", required=True, help="Type of sequences (aa or nu).")
-pars.add_argument('--exclude', dest="exclude", help="Path to file containing a list of samples to be excluded")
 pars.add_argument('--genome_statistics' , dest="genome_stats", required=True, help="Path to genome statistics output file.")
 pars.add_argument('--gene_statistics' , dest="gene_stats", required=True, help="Path to gene statistics output file.")
-pars.add_argument('--batchID' , dest="batchid", default=1, type=int, help="Batch ID (start for subsampling)")
+pars.add_argument('--batchID' , dest="batchid", default=0, type=int, help="Batch ID (start for subsampling)")
 pars.add_argument('--nbatches', dest="nbatches", default=1, type=int, help="Total number of batches (step size for subsampling)")
-pars.add_argument('--fix_aa_codes', dest="fixaa", default=False, action='store_true', help="if this is specified certain rare aa codes (U|J|Z) will be replaced with 'X' and stop codons (*) removed")
+pars.add_argument('--genome_busco_sequence_subdir', dest="genome_busco_sequence_subdir", default="", type=str, help="""sub-directory path under BUSCO result dirrectory which contains all genome BUSCO sequence files, defaults to '', but could be orthology/busco/busco_runs.""")
+pars.add_argument('--method', dest="method", default="no-tar-file", type=str, help="""method used to create sequence files. Could be 'use-tar-file' or 'no-tar-file' (default).""")
+
 
 args=pars.parse_args()
 
@@ -35,7 +42,8 @@ if args.type == "nu":
 	extension = ".fna"
 else:
 	extension = ".faa" 
-
+	
+temp_dir = "temp"
 
 busco_overview = pd.read_csv(args.busco_table, sep="\t")
 #print(busco_overview)
@@ -46,114 +54,94 @@ print("type: ", args.type)
 print("outdir: ", args.outdir)
 print("batchID: %i / %i" %(args.batchid, args.nbatches))
 
-exclude_list = []
-if args.exclude:
-	print("exclude: %s" %args.exclude)
-	excludefile = open(args.exclude)
-	for l in excludefile:
-		exclude_list.append(l.strip())
-
 species_list = busco_overview.species.tolist()
-#print(species_list)
 print("Original number of species:", len(species_list))
 #print(species_list)
 #first remove species with too low busco coverage
 busco_overview = busco_overview.set_index("species")
 
-genome_file = open(args.genome_stats, "w")
-for sp in species_list:
-	if busco_overview.loc[sp, "percent_complete"] < float(args.cutoff):
-		out = sp + "\tFAILED" + "\t" + str(busco_overview.loc[sp, "percent_complete"]) + "\t" + str(float(args.cutoff))
-		print(out, file=genome_file)
-		busco_overview = busco_overview.drop([sp])
-	elif sp in exclude_list:
-		out = sp + "\tEXCLUDED" + "\t" + str(busco_overview.loc[sp, "percent_complete"]) + "\t" + str(float(args.cutoff))
-		print(out, file=genome_file)
-		busco_overview = busco_overview.drop([sp])
-	else:
-		out = sp + "\tOK" + "\t" + str(busco_overview.loc[sp, "percent_complete"]) + "\t" + str(float(args.cutoff)) 
-		print(out, file=genome_file)
-species_list =  list(busco_overview.index)
-print("Species remaining after applying cutoff(s):", len(species_list))
-genome_file.close()
+with open(args.genome_stats, "w") as genome_file:
+	for sp in species_list:
+		if busco_overview.loc[sp, "percent_complete"] < float(args.cutoff):
+			out = sp + "\tFAILED" + "\t" + str(busco_overview.loc[sp, "percent_complete"]) + "\t" + str(float(args.cutoff))
+			print(out, file=genome_file)
+			busco_overview = busco_overview.drop([sp])
+		else:
+			out = sp + "\tOK" + "\t" + str(busco_overview.loc[sp, "percent_complete"]) + "\t" + str(float(args.cutoff)) 
+			print(out, file=genome_file)
+	species_list =  list(busco_overview.index)
+	print("Species remaining after applying cutoff:", len(species_list))
 
 #now loop through each busco and extract sequence for each species
 buscos = list(busco_overview.columns.values)
 buscos.remove("percent_complete")
 
-target=int(args.batchid)
-gene_file = open(args.gene_stats, "w").close()
-for i in range(len(buscos)):
-	j = i+1
-#	print("i: %i; j: %i; target: %i" %(i,j, target))
-	if j != target:
-#		print("Don't do anything (i: %i)" %i)
-		continue
-	gene_file = open(args.gene_stats, "a")
-	target+=args.nbatches
-	busco = buscos[i]
-	print("Processing: " + busco)
-	numseqs = 0
-	outstring = ""
+gene_file = open(args.gene_stats, "w").close()   # clear the gene_stats file if already exists
+
+with open(args.gene_stats, "a") as gene_file:
+	# first get gene file lists of all genomes
+	genome_gene_file_lists = {}
+	if args.method == "use-tar-file":
+			# remove old temp dir and recreate a empty one
+			if os.path.isdir(temp_dir):
+				print("Temp dir exists. Empty it.")
+				shutil.rmtree(temp_dir)
+			os.mkdir(temp_dir)
+
 	for species in species_list:
-		tar_file_content = glob.glob(args.busco_results + "/" + species + ".*/run_busco/single_copy_busco_sequences.txt")[0]
-		tar_file_content = open(tar_file_content, "r")
-		for line in tar_file_content:
-			line = line.strip()
-			if busco+extension in line:
-				path_to_busco_file = line.split(" ")[-1]	
-				tf = glob.glob(args.busco_results + "/" + species + ".*/run_busco/single_copy_busco_sequences.tar")[0]
-				tf = tarfile.open(tf, "r")
-				#print(path_to_busco_file)
-				#print(tf.extractfile(path_to_busco_file))
-				tar_file_content = TextIOWrapper(tf.extractfile(path_to_busco_file))
-				if tar_file_content:
-					with TextIOWrapper(tf.extractfile(path_to_busco_file)) as handle:
-						for seq_record in SeqIO.parse(handle, "fasta"):
-							name = ">" +species+"\n"
-							#outfile.write(name)
-							#outfile.write(str(seq_record.seq)+"\n")
-							outstring = outstring + name
-							outstring = outstring + str(seq_record.seq).upper() + "\n"
+		print('create file list for', species+'.')
+		if args.method == "use-tar-file":
+			file_list = []
+			file_path = os.path.join(args.busco_results, args.genome_busco_sequence_subdir, species, "run_busco/single_copy_busco_sequences.txt")
+			#print(file_path)
+			with open(file_path, "r") as file_list_file:
+				 for line in file_list_file:
+				 	line = line.strip()
+				 	filename = line.split(' ')[-1]
+				 	file_list.append(filename)
+			
+			# untar the tar file to temp dir at the same time
+			print('Untarring file for', species+'.')
+			species_dir = os.path.join(temp_dir, species)
+			os.mkdir(species_dir)
+			tf = tarfile.open(os.path.join(args.busco_results, args.genome_busco_sequence_subdir, species, "run_busco/single_copy_busco_sequences.tar"))
+			tf.extractall(species_dir)     # extract tar file to temp folder
+			tf.close()
+			print('Done untarring.')
+		else:   # default method - no tar file
+			dir_path = os.path.join(args.busco_results, args.genome_busco_sequence_subdir, species, "run_eutheria_odb10/busco_sequences/single_copy_busco_sequences")
+			file_list = os.listdir(dir_path)
+		
+		filtered_list = [f for f in file_list if extension in f]
+		genome_gene_file_lists[species] = filtered_list
+		print('Done file list creation.')
+		
+	# now we begin to loop through genes to filter based on minsp
+	# and create fas files along the way
+	i = args.batchid     # the start if the subsampling. defaults to 0
+	while i < len(buscos):
+		busco = buscos[i]
+		print("Processing: " + busco)
+		outstring = ""
+		for species in species_list:
+			filename = busco + extension
+			if filename in genome_gene_file_lists[species]:
+				if args.method == "use-tar-file":
+					file_path = os.path.join(temp_dir, species, filename)
+				else:  #defualt method - no tar file
+					file_path = os.path.join(args.busco_results , args.genome_busco_sequence_subdir, species, "run_eutheria_odb10/busco_sequences/single_copy_busco_sequences", filename)
+				if os.path.exists(file_path):
+					for seq_record in SeqIO.parse(file_path, "fasta"):
+						name = ">" +species+"\n"
+						outstring += name
+						outstring += (str(seq_record.seq) + "\n")
 				else:
 					print(busco, "not found for", species)
-					continue
-	if outstring.count(">") >= int(args.minsp):	# only keep sequences if total number is larger than specified cutoff above.		
-		if args.fixaa:
-			if 'J' in outstring or 'Z' in outstring or '*' in outstring:
-				print("replacing stuff:\n", outstring)
-				outstring = "\n".join([l.replace("U","X").replace("Z","X").replace("J","X").replace("*","") if not ">" in l else l for l in outstring.split("\n")])
-
-		print(busco + "\t" + "OK" + "\t" + str(outstring.count(">")) +"\t" + str(int(args.minsp)), file=gene_file)
-		outfile = open(args.outdir+"/"+busco+"_all.fas", "w")
-		outfile.write(outstring)
-		outfile.close()
-	else:
-		print(busco + "\t" + "FAILED" + "\t" + str(outstring.count(">")) +"\t" + str(int(args.minsp)), file=gene_file)
-	gene_file.close()
-#old working code when busco sequences are not tared.
-"""
-	for species in species_list:
-		for genome in genomes: # this loop is to get the correct directory name, it is very unelegant
-			#print(args.busco_results+"/"+genome+"/run_busco/single_copy_busco_sequences/"+busco+extension)
-			if species == genome:
-				try:
-					seqfile = open(args.busco_results + "/" + genome + "/run_busco/single_copy_busco_sequences/" + busco + extension, "r")
-					for seq_record in SeqIO.parse(seqfile, "fasta"):
-						name = ">" +species+"\n"
-						#outfile.write(name)
-						#outfile.write(str(seq_record.seq)+"\n")
-						outstring = outstring + name
-						outstring = outstring + str(seq_record.seq) + "\n"
-					seqfile.close()
-				except: # skip missing buscos
-					continue
-	if outstring.count(">") >= int(args.minsp):	# only keep sequences if total number is larger than specified cutoff above.		
-		print(busco + "\t" + "OK" + "\t" + str(outstring.count(">")) +"\t" + str(int(args.minsp)), file=gene_file)
-		outfile = open(args.outdir+"/"+busco+"_all.fas", "w")
-		outfile.write(outstring)
-		outfile.close()
-	else:
-		print(busco + "\t" + "FAILED" + "\t" + str(outstring.count(">")) +"\t" + str(int(args.minsp)), file=gene_file)
-gene_file.close()
-"""
+							
+		if outstring.count(">") >= int(args.minsp):	# only keep sequences if total number is larger than specified cutoff above.		
+			print(busco + "\t" + "OK" + "\t" + str(outstring.count(">")) +"\t" + str(int(args.minsp)), file=gene_file)
+			with open(os.path.join(args.outdir, busco+"_all.fas"), "w") as outfile:
+				outfile.write(outstring)
+		else:
+			print(busco + "\t" + "FAILED" + "\t" + str(outstring.count(">")) +"\t" + str(int(args.minsp)), file=gene_file)
+		i += args.nbatches  # for subsampling. nbatches defaults to 1 which is no subsmpling
