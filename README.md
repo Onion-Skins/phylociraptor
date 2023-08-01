@@ -1,3 +1,12 @@
+# Fork description
+
+This is a fork from respl's original repository with currently major revision to both extract_busco_table.py and create_sequence_files.py.
+
+Thanks a lot for respl's great job!
+
+Blow is the original README file content:
+---------------------------------------------------------------------------------------------------------------
+
 ```         
                       __          __           _                  __           
                ____  / /_  __  __/ /___  _____(_)________ _____  / /_____  _____
