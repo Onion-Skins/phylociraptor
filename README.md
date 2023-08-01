@@ -1,6 +1,18 @@
 # Fork description
 
 This is a fork from respl's original repository with currently major revision to both extract_busco_table.py and create_sequence_files.py.
+Changes to extract_busco_table.py:
+- Adapt to new Busco version(works with BUSCO 5.3.2);
+- Add a new way to eliminate the need of single_copy_sequence.txt;
+- Add a new option to specify desired sequence file type: faa or fna;
+- Add a new option to specify the location of sub-directory containing squence files under busco result directory;
+
+Changes to create_sequence_files.py:
+- adapt to new Busco version (works with BUSCO 5.3.2);
+- fixed a bug in Philipp's code which may cause duplicated sequences when feeding data to iq-tree later;
+- vastly improve speed in the order of hundred times by untarring tar file in advance;
+- Add a new way to eliminate the need of tar file;
+- Add a new option to specify the location of sub-directory containing squence files under busco result directory;
 
 Thanks a lot for respl's great job!
 
