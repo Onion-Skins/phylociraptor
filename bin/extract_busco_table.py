@@ -4,7 +4,7 @@
 # - Adapt to new Busco version(works with BUSCO 5.3.2)
 # - Add a new way to eliminate the need of single_copy_sequence.txt
 # - Add a new option to specify desired sequence file type: faa or fna
-# - Add a new option to specify the location of squence files location under busco result directory
+# - Add a new option to specify the location of sub-directory containing squence files under busco result directory
 
 import os
 import sys
@@ -19,7 +19,7 @@ pars.add_argument('--hmm', dest="hmm_dir", required=True, help="Directory of the
 pars.add_argument('--busco_results', dest="busco_results", required=True, help="Results directory containing all BUSCO runs.")
 pars.add_argument('-o', dest="out", required=True, help="BUSCO table output file.")
 pars.add_argument('--type' , dest="type", required=True, help="Type of sequences (aa or nu).")
-pars.add_argument('--genome_busco_sequence_subdir', dest="genome_busco_sequence_subdir", default="", type=str, help="""sub-directory path under BUSCO result dirrectory which contains all genome BUSCO sequence files, defaults to '', but could be orthology/busco/busco_runs.""")
+pars.add_argument('--genome_busco_sequence_subdir', dest="genome_busco_sequence_subdir", default="", type=str, help="""sub-directory path under BUSCO result dirrectory which contains all genome BUSCO sequence files, defaults to '', but could be something like 'orthology/busco/busco_runs'.""")
 pars.add_argument('--method', dest="method", default="no-tar-file", type=str, help="""method used to create sequence files. Could be 'use-tar-file' or 'no-tar-file' (default).""")
 args=pars.parse_args()
 

@@ -5,7 +5,7 @@
 # - fixed a bug by in Philipp's code which may cause duplicated sequences when feeding data to iq-tree later
 # - vastly improve speed in the order of hundred times by untarring tar file in advance
 # - Add a new way to eliminate the need of tar file
-# - Add a new option to specify the location of squence files location under busco result directory
+# - Add a new option to specify the location of sub-directory containing squence files under busco result directory
 
 import os
 import sys
@@ -31,7 +31,7 @@ pars.add_argument('--genome_statistics' , dest="genome_stats", required=True, he
 pars.add_argument('--gene_statistics' , dest="gene_stats", required=True, help="Path to gene statistics output file.")
 pars.add_argument('--batchID' , dest="batchid", default=0, type=int, help="Batch ID (start for subsampling)")
 pars.add_argument('--nbatches', dest="nbatches", default=1, type=int, help="Total number of batches (step size for subsampling)")
-pars.add_argument('--genome_busco_sequence_subdir', dest="genome_busco_sequence_subdir", default="", type=str, help="""sub-directory path under BUSCO result dirrectory which contains all genome BUSCO sequence files, defaults to '', but could be orthology/busco/busco_runs.""")
+pars.add_argument('--genome_busco_sequence_subdir', dest="genome_busco_sequence_subdir", default="", type=str, help="""sub-directory path under BUSCO result dirrectory which contains all genome BUSCO sequence files, defaults to '', but could be something like 'orthology/busco/busco_runs'.""")
 pars.add_argument('--method', dest="method", default="no-tar-file", type=str, help="""method used to create sequence files. Could be 'use-tar-file' or 'no-tar-file' (default).""")
 
 
