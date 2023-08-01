@@ -2,7 +2,7 @@
 # First written by Philipp Resl
 # big revision by Rodger Wang in July 2023 to  
 # - adapt to new Busco version (works with BUSCO 5.3.2);
-# - fixed a bug by in Philipp's code which may cause duplicated sequences when feeding data to iq-tree later
+# - fixed a bug in Philipp's code which may cause duplicated sequences when feeding data to iq-tree later
 # - vastly improve speed in the order of hundred times by untarring tar file in advance
 # - Add a new way to eliminate the need of tar file
 # - Add a new option to specify the location of sub-directory containing squence files under busco result directory
