@@ -17,7 +17,7 @@ Changes to create_sequence_files.py:
 
 Thanks a lot for respl's great job!
 
-Blow is the original README file content:
+Below is the original README file content:
 ---------------------------------------------------------------------------------------------------------------
 
 ```         
